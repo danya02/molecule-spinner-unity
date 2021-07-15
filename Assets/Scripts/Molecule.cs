@@ -4,15 +4,55 @@ using UnityEngine;
 
 public class AtomType
 {
-    public string name;
-    public AtomType(string n)
+
+    // Atomic radius, covalent radius
+    private static Dictionary<string, (float, float)> atomRadiusData = new Dictionary<string, (float, float)>
     {
-        name = n;
-    }
+        ["H"] = (0.79f, 0.32f),
+        ["LI"] = (1.55f, 1.63f),
+        ["BE"] = (1.12f, 0.9f),
+        ["B"] = (0.98f, 0.82f),
+        ["C"] = (0.91f, 0.77f),
+        ["N"] = (0.92f, 0.75f),
+        ["O"] = (0.88f, 0.73f),
+        ["F"] = (0.84f, 0.72f),
+        
+
+    };
+    public string name;
+    public float covalentRadius = 2.0f;
+    public float spaceFillingRadius = 1.0f;
+    public float ballStickRadius = 0.3f;
+    public Material material;
 
     public static AtomType FromName(string name)
     {
-        return new AtomType(name);
+        AtomType type = new AtomType();
+        type.name = name;
+        Material m = Resources.Load<Material>("Atoms/Atom" + name);
+        if(m == null)
+        {
+            Shader shader = Shader.Find("Standard");
+            m = new Material(shader);
+            Color c = new Color();
+            Hash128 h = Hash128.Compute(name);
+            float value = Mathf.InverseLerp(int.MinValue, int.MaxValue, h.GetHashCode());
+            c = Color.HSVToRGB(value, 1, 0.5f);
+            m.SetColor("_Color", c);
+        }
+        type.material = m;
+        (float, float) radii;
+        if(!atomRadiusData.TryGetValue(name, out radii))
+        {
+            radii = (0.91f, 0.77f); // Assume all unknown atoms are carbon.
+        }
+
+        type.covalentRadius = radii.Item2;
+        type.spaceFillingRadius = radii.Item1;
+        type.ballStickRadius = radii.Item1 / 3;
+
+
+        return type;
     }
 }
 
@@ -49,11 +89,8 @@ public class Molecule : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        AtomType at = new AtomType("Test");
-        atoms.Add(new AtomDataElement(new Vector3(0, 0), "Atom1", at));
-        atoms.Add(new AtomDataElement(new Vector3(0, 1), "Atom2", at));
-        atoms.Add(new AtomDataElement(new Vector3(1, 0), "Atom3", at));
-        atoms.Add(new AtomDataElement(new Vector3(1, 1), "Atom4", at));
+        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\f18.ort");
+        FromOrtString(data);
         InstantiateAtoms();
 
     }
@@ -78,6 +115,7 @@ public class Molecule : MonoBehaviour
     {
         data = data.Replace("=" + System.Environment.NewLine + " ", " ");
         List<AtomType> atomTypes = new List<AtomType>();
+        atoms = new List<AtomDataElement>();
         using (System.IO.StringReader reader = new System.IO.StringReader(data))
         {
             string line;
@@ -86,13 +124,13 @@ public class Molecule : MonoBehaviour
                 line = reader.ReadLine();
                 if (line.StartsWith("TITL"))
                 {
-                    name = line.Substring(4);
+                    this.gameObject.name = line.Substring(4);
                     continue;
                 }
                 if (line.StartsWith("SFAC"))
                 {
                     atomTypes = new List<AtomType>();
-                    string[] names = line.Substring(4).Split(new char[] { ' ' });
+                    string[] names = line.Substring(4).Split(new char[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
                     foreach (string name in names) { atomTypes.Add(AtomType.FromName(name)); }
                     continue;
                 }
@@ -103,7 +141,15 @@ public class Molecule : MonoBehaviour
                 }
                 if (isCommand) { continue; }
                 string[] lineComponents = line.Split(new char[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
-                throw new System.Exception("TODO: implement atom data reading.");
+
+                Vector3 position = new Vector3();
+                int ati = int.Parse(lineComponents[1]) - 1;
+                position.x = float.Parse(lineComponents[2]);
+                position.y = float.Parse(lineComponents[3]);
+                position.z = float.Parse(lineComponents[4]);
+
+                AtomDataElement newAtom = new AtomDataElement(position, lineComponents[0], atomTypes[ati]);
+                atoms.Add(newAtom);
             }
         }
     }
