@@ -1,6 +1,35 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
+using B83.ExpressionParser;
+
+public class CellData
+{
+    public float wavelength = 0;
+    public float a = 1;
+    public float b = 1;
+    public float c = 1;
+    public float alpha_euler = 90;
+    public float beta_euler = 90;
+    public float gamma_euler = 90;
+    public float alpha_rad { get => Mathf.Deg2Rad * alpha_euler; set => alpha_euler = Mathf.Rad2Deg * value; }
+    public float beta_rad { get => Mathf.Deg2Rad * beta_euler; set => beta_euler = Mathf.Rad2Deg * value; }
+    public float gamma_rad { get => Mathf.Deg2Rad * gamma_euler; set => gamma_euler = Mathf.Rad2Deg * value; }
+    public float n2 { get => (Mathf.Cos(alpha_rad) - Mathf.Cos(gamma_rad) * Mathf.Cos(beta_rad)) / Mathf.Sin(gamma_rad); }
+
+    public Matrix4x4 cellToWorldTransform { get => new Matrix4x4(
+        new Vector4(a, b * Mathf.Cos(gamma_rad), c * Mathf.Cos(beta_rad), 0),
+        new Vector4(0, b * Mathf.Sin(gamma_rad), c * n2, 0),
+        new Vector4(0, 0, c * Mathf.Sqrt(Mathf.Pow(Mathf.Sin(beta_rad), 2) - Mathf.Pow(n2, 2)), 0),
+        new Vector4(0, 0, 0, 0)
+        ); }
+
+    public Vector3 CellToWorld(Vector3 cellCoordinates)
+    {
+        Vector4 v = new Vector4(cellCoordinates.x, cellCoordinates.y, cellCoordinates.z);
+        Vector4 newV = cellToWorldTransform * v;
+        return new Vector3(newV.x, newV.y, newV.z);
+    }
+}
 
 public class AtomType
 {
@@ -68,6 +97,24 @@ public class AtomDataElement{
     }
 }
 
+public class Symmetry
+{
+    public string XExpr="X", YExpr="Y", ZExpr = "Z";
+
+    public Vector3 ApplyTransform(Vector3 original)
+    {
+        var p = new ExpressionParser();
+        string replace(string s) => (s
+            .Replace("X", "(" + original.x.ToString() + ")")
+            .Replace("Y", "(" + original.y.ToString() + ")")
+            .Replace("Z", "(" + original.z.ToString() + ")"));
+        float newX = (float)p.Evaluate(replace(XExpr));
+        float newY = (float)p.Evaluate(replace(YExpr));
+        float newZ = (float)p.Evaluate(replace(ZExpr));
+        return new Vector3(newX, newY, newZ);
+    }
+}
+
 public class Molecule : MonoBehaviour
 {
 
@@ -100,13 +147,16 @@ public class Molecule : MonoBehaviour
     public List<AtomDataElement> atoms = new List<AtomDataElement>();
     List<GameObject> atomObjects = new List<GameObject>();
 
+    CellData cell = new CellData();
+    List<Symmetry> symmetries = new List<Symmetry>();
+
     void InstantiateAtoms()
     {
         foreach(AtomDataElement atom in atoms)
         {
             GameObject atomObj = Instantiate(AtomPrefab);
             atomObj.transform.SetParent(this.transform);
-            atomObj.GetComponent<Atom>().Become(atom);
+            atomObj.GetComponent<Atom>().Become(atom, cell);
             atomObjects.Add(atomObj);
         }
     }
@@ -152,6 +202,74 @@ public class Molecule : MonoBehaviour
                 atoms.Add(newAtom);
             }
         }
+    }
+
+    void FromInsString(string data)
+    {
+        data = data.Replace("=" + System.Environment.NewLine + " ", " ");
+        List<AtomType> atomTypes = new List<AtomType>();
+        atoms = new List<AtomDataElement>();
+        cell = new CellData();
+        symmetries = new List<Symmetry>();
+        using (System.IO.StringReader reader = new System.IO.StringReader(data))
+        {
+            string line;
+            while (reader.Peek() != -1)
+            {
+                line = reader.ReadLine();
+                if (line.StartsWith("TITL"))
+                {
+                    this.gameObject.name = line.Substring(4);
+                    continue;
+                }
+                if (line.StartsWith("SFAC"))
+                {
+                    atomTypes = new List<AtomType>();
+                    string[] names = line.Substring(4).Split(new char[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string name in names) { atomTypes.Add(AtomType.FromName(name)); }
+                    continue;
+                }
+
+                if (line.StartsWith("CELL"))
+                {
+                    string[] values = line.Substring(4).Split(new char[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    cell.a = float.Parse(values[1]);
+                    cell.b = float.Parse(values[2]);
+                    cell.c = float.Parse(values[3]);
+                    cell.alpha_euler = float.Parse(values[4]);
+                    cell.beta_euler = float.Parse(values[5]);
+                    cell.gamma_euler = float.Parse(values[6]);
+                }
+
+                if (line.StartsWith("SYMM"))
+                {
+                    string[] values = line.Substring(4).Split(new char[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    Symmetry s = new Symmetry();
+                    s.XExpr = values[0];
+                    s.YExpr = values[1];
+                    s.ZExpr = values[2];
+
+                }
+
+                bool isCommand = false;
+                foreach (string cmd in ShelxlCommands)
+                {
+                    if (line.StartsWith(cmd)) { isCommand = true; break; }
+                }
+                if (isCommand) { continue; }
+                string[] lineComponents = line.Split(new char[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+
+                Vector3 position = new Vector3();
+                int ati = int.Parse(lineComponents[1]) - 1;
+                position.x = float.Parse(lineComponents[2]);
+                position.y = float.Parse(lineComponents[3]);
+                position.z = float.Parse(lineComponents[4]);
+
+                AtomDataElement newAtom = new AtomDataElement(position, lineComponents[0], atomTypes[ati]);
+                atoms.Add(newAtom);
+            }
+        }
+
     }
 
     void ResetChildren()
