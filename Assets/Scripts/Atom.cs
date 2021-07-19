@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -12,10 +13,10 @@ public class Atom : MonoBehaviour
 
     AtomType myType;
 
-    public void Become(AtomDataElement dataElement, CellData cell)
+    public void Become(AtomDataElement dataElement, CellData cell, Vector3 position)
     {
-        this.transform.localPosition = cell.CellToWorld(dataElement.position);
-        this.gameObject.name = dataElement.name;
+        this.transform.localPosition = cell.CellToWorld(position);
+        this.gameObject.name = dataElement.name + " instance";
         myType = dataElement.type;
         this.gameObject.GetComponent<Renderer>().material = dataElement.type.material;
         float scale = dataElement.type.spaceFillingRadius*2;

@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using B83.ExpressionParser;
 
 public class CellData
 {
@@ -97,23 +96,6 @@ public class AtomDataElement{
     }
 }
 
-public class Symmetry
-{
-    public string XExpr="X", YExpr="Y", ZExpr = "Z";
-
-    public Vector3 ApplyTransform(Vector3 original)
-    {
-        var p = new ExpressionParser();
-        string replace(string s) => (s
-            .Replace("X", "(" + original.x.ToString() + ")")
-            .Replace("Y", "(" + original.y.ToString() + ")")
-            .Replace("Z", "(" + original.z.ToString() + ")"));
-        float newX = (float)p.Evaluate(replace(XExpr));
-        float newY = (float)p.Evaluate(replace(YExpr));
-        float newZ = (float)p.Evaluate(replace(ZExpr));
-        return new Vector3(newX, newY, newZ);
-    }
-}
 
 public class Molecule : MonoBehaviour
 {
@@ -130,14 +112,23 @@ public class Molecule : MonoBehaviour
         "PRIG", "REM",  "RESI", "RIGU", "RTAB", "SADI", "SAME",
         "SFAC", "SHEL", "SIMU", "SIZE", "SPEC", "STIR", "SUMP",
         "SWAT", "SYMM", "TEMP", "TITL", "TWIN", "TWST", "UNIT",
-        "WGHT", "WIGL", "WPDB", "XNPD", "ZERR"
+        "WGHT", "WIGL", "WPDB", "XNPD", "ZERR", "FMOL", "L.S.",
     };
 
     // Start is called before the first frame update
     void Start()
     {
-        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\f18.ort");
-        FromOrtString(data);
+        //string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\f18.ort");
+        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\f18.ins");
+        FromInsString(data);
+        symmetries = Symmetry.ComposeAll(symmetries);
+        List<Symmetry> symms = new List<Symmetry>(symmetries);
+        Debug.Log(symms.Count);
+        foreach(Symmetry s in symms)
+        {
+            Debug.Log(s.ToString());
+
+        }
         InstantiateAtoms();
 
     }
@@ -148,18 +139,34 @@ public class Molecule : MonoBehaviour
     List<GameObject> atomObjects = new List<GameObject>();
 
     CellData cell = new CellData();
-    List<Symmetry> symmetries = new List<Symmetry>();
+    HashSet<Symmetry> symmetries = new HashSet<Symmetry>(new SymmetryEqualityComparer());
 
     void InstantiateAtoms()
     {
+        GameObject empty = new GameObject();
         foreach(AtomDataElement atom in atoms)
         {
-            GameObject atomObj = Instantiate(AtomPrefab);
-            atomObj.transform.SetParent(this.transform);
-            atomObj.GetComponent<Atom>().Become(atom, cell);
-            atomObjects.Add(atomObj);
+            GameObject root = Instantiate(empty);
+            root.transform.parent = this.transform;
+            root.name = atom.name;
+
+            List<Vector3> positions = new List<Vector3>();
+            Vector3 originalPosition = atom.position;
+            foreach(Symmetry symm in symmetries)
+            {
+                positions.Add(symm.ApplyTransform(originalPosition));
+            }
+
+            foreach (Vector3 position in positions)
+            {
+                GameObject atomObj = Instantiate(AtomPrefab);
+                atomObj.transform.parent = root.transform;
+                atomObj.GetComponent<Atom>().Become(atom, cell, position);
+                atomObjects.Add(atomObj);
+            }
         }
     }
+
 
     void FromOrtString(string data)
     {
@@ -210,13 +217,16 @@ public class Molecule : MonoBehaviour
         List<AtomType> atomTypes = new List<AtomType>();
         atoms = new List<AtomDataElement>();
         cell = new CellData();
-        symmetries = new List<Symmetry>();
+        symmetries = new HashSet<Symmetry>(new SymmetryEqualityComparer());
+        symmetries.Add(Symmetry.identity);
         using (System.IO.StringReader reader = new System.IO.StringReader(data))
         {
             string line;
             while (reader.Peek() != -1)
             {
                 line = reader.ReadLine();
+                line = line.Trim();
+                if(line == "") { continue; }
                 if (line.StartsWith("TITL"))
                 {
                     this.gameObject.name = line.Substring(4);
@@ -244,11 +254,25 @@ public class Molecule : MonoBehaviour
                 if (line.StartsWith("SYMM"))
                 {
                     string[] values = line.Substring(4).Split(new char[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries);
-                    Symmetry s = new Symmetry();
-                    s.XExpr = values[0];
-                    s.YExpr = values[1];
-                    s.ZExpr = values[2];
+                    Symmetry s = new Symmetry(values[0], values[1], values[2]);
+                    symmetries.Add(s);
+                }
 
+                if (line.StartsWith("LATT"))
+                {
+                    int latticeType = int.Parse(line.Substring(4));
+                    if (latticeType > 0)
+                    {
+                        Matrix4x4 m = Matrix4x4.zero;
+                        m[0, 0] = -1;
+                        m[1, 1] = -1;
+                        m[2, 2] = -1;
+
+                        symmetries.Add(new Symmetry
+                        {
+                            myMatrix = m
+                        });
+                    }
                 }
 
                 bool isCommand = false;
