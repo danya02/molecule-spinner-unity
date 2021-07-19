@@ -29,9 +29,9 @@ public class Symmetry
             m[2, 0] = myMatrix[2, 0];
             m[2, 1] = myMatrix[2, 1];
             m[2, 2] = myMatrix[2, 2];
-            m[0, 3] = myMatrix[0, 3] % 1;
-            m[1, 3] = myMatrix[1, 3] % 1;
-            m[2, 3] = myMatrix[2, 3] % 1;
+            m[0, 3] = ((myMatrix[0, 3] % 1) + 1) % 1;
+            m[1, 3] = ((myMatrix[1, 3] % 1) + 1) % 1;
+            m[2, 3] = ((myMatrix[2, 3] % 1) + 1) % 1;
             return m;
         }
     }
@@ -60,7 +60,7 @@ public class Symmetry
             if (v.x == 1) { expr += "+X"; } else if (v.x == -1) { expr += "-X"; }
             if (v.y == 1) { expr += "+Y"; } else if (v.y == -1) { expr += "-Y"; }
             if (v.z == 1) { expr += "+Z"; } else if (v.z == -1) { expr += "-Z"; }
-            expr += (v.w>0?"+":"")+ v.w.ToString() + (i != 3 ? ", " : "");
+            expr += (v.w>=0?"+":"")+ v.w.ToString() + (i != 3 ? ", " : "");
             outp += expr;
         }
         return outp;

@@ -119,7 +119,7 @@ public class Molecule : MonoBehaviour
     void Start()
     {
         //string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\f18.ort");
-        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\f18.ins");
+        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\schw44.ins");
         FromInsString(data);
         symmetries = Symmetry.ComposeAll(symmetries);
         List<Symmetry> symms = new List<Symmetry>(symmetries);
@@ -165,6 +165,42 @@ public class Molecule : MonoBehaviour
                 atomObjects.Add(atomObj);
             }
         }
+
+        HashSet<Vector3> seenPositions = new HashSet<Vector3>();
+        GameObject cellRoot = Instantiate(empty);
+        cellRoot.name = "Base Cell";
+
+
+        foreach(GameObject obj in atomObjects)
+        {
+            if (seenPositions.Contains(obj.transform.localPosition))
+            {
+                Destroy(obj);
+            }
+            else
+            {
+                seenPositions.Add(obj.transform.localPosition);
+                obj.transform.parent.parent = cellRoot.transform;
+            }
+        }
+
+        Vector3 offsetX = cell.CellToWorld(new Vector3(1, 0, 0));
+        Vector3 offsetY = cell.CellToWorld(new Vector3(0, 1, 0));
+        Vector3 offsetZ = cell.CellToWorld(new Vector3(0, 0, 1));
+        for(int i=0; i<2; i++)
+        {
+            for (int j=0; j<2; j++)
+            {
+                for(int k=0; k<2; k++)
+                {
+                    GameObject inst = Instantiate(cellRoot);
+                    inst.transform.parent = cellRoot.transform;
+                    inst.name = string.Format("Cell instance {0}, {1}, {2}", i, j, k);
+                    inst.transform.localPosition = offsetX * i + offsetY * j + offsetZ * k;
+                }
+            }
+        }
+
     }
 
 
