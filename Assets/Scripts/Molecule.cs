@@ -99,6 +99,7 @@ public class AtomDataElement{
 
 public class Molecule : MonoBehaviour
 {
+    public GameObject StickPrefab;
 
     private string[] ShelxlCommands = new string[]
     {
@@ -119,7 +120,7 @@ public class Molecule : MonoBehaviour
     void Start()
     {
         //string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\f18.ort");
-        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\schw44.ins");
+        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\schw33.ins");
         FromInsString(data);
         symmetries = Symmetry.ComposeAll(symmetries);
         List<Symmetry> symms = new List<Symmetry>(symmetries);
@@ -170,12 +171,13 @@ public class Molecule : MonoBehaviour
         GameObject cellRoot = Instantiate(empty);
         cellRoot.name = "Base Cell";
 
-
+        List<GameObject> toDelete = new List<GameObject>();
         foreach(GameObject obj in atomObjects)
         {
             if (seenPositions.Contains(obj.transform.localPosition))
             {
                 Destroy(obj);
+                toDelete.Add(obj);
             }
             else
             {
@@ -183,10 +185,18 @@ public class Molecule : MonoBehaviour
                 obj.transform.parent.parent = cellRoot.transform;
             }
         }
+        foreach(GameObject obj in toDelete) { atomObjects.Remove(obj); }
+
+        foreach(GameObject obj in atomObjects)
+        {
+            obj.GetComponent<Atom>().CreateLinksToNeighbors(atomObjects, StickPrefab);
+        }
+
 
         Vector3 offsetX = cell.CellToWorld(new Vector3(1, 0, 0));
         Vector3 offsetY = cell.CellToWorld(new Vector3(0, 1, 0));
         Vector3 offsetZ = cell.CellToWorld(new Vector3(0, 0, 1));
+
         for(int i=0; i<2; i++)
         {
             for (int j=0; j<2; j++)
@@ -201,6 +211,12 @@ public class Molecule : MonoBehaviour
             }
         }
 
+        //System.IO.TextWriter file = new System.IO.StreamWriter(@"C:\Users\MSI\Desktop\shelx\coords.txt");
+        //foreach(GameObject g in GameObject.FindGameObjectsWithTag("Atom"))
+        //{
+        //    file.WriteLine(string.Format("{0} {1} {2}", g.transform.position.x, g.transform.position.y, g.transform.position.z));
+        //}
+        //file.Close();
     }
 
 
