@@ -120,7 +120,7 @@ public class Molecule : MonoBehaviour
     void Start()
     {
         //string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\f18.ort");
-        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\schw33.ins");
+        string data = System.IO.File.ReadAllText(@"C:\Users\MSI\Desktop\shelx\schw44.ins");
         FromInsString(data);
         symmetries = Symmetry.ComposeAll(symmetries);
         List<Symmetry> symms = new List<Symmetry>(symmetries);
@@ -137,9 +137,10 @@ public class Molecule : MonoBehaviour
     public GameObject AtomPrefab;
 
     public List<AtomDataElement> atoms = new List<AtomDataElement>();
+    public HashSet<Vector3> AllAliveAtomPositions = new HashSet<Vector3>();
     List<GameObject> atomObjects = new List<GameObject>();
 
-    CellData cell = new CellData();
+    public CellData cell = new CellData();
     HashSet<Symmetry> symmetries = new HashSet<Symmetry>(new SymmetryEqualityComparer());
 
     void InstantiateAtoms()
@@ -161,8 +162,10 @@ public class Molecule : MonoBehaviour
             foreach (Vector3 position in positions)
             {
                 GameObject atomObj = Instantiate(AtomPrefab);
+                atomObj.GetComponent<Atom>().AllAtomPositions = AllAliveAtomPositions;
                 atomObj.transform.parent = root.transform;
                 atomObj.GetComponent<Atom>().Become(atom, cell, position);
+                AllAliveAtomPositions.Add(atomObj.transform.position);
                 atomObjects.Add(atomObj);
             }
         }
@@ -187,16 +190,19 @@ public class Molecule : MonoBehaviour
         }
         foreach(GameObject obj in toDelete) { atomObjects.Remove(obj); }
 
-        foreach(GameObject obj in atomObjects)
+        for(int i=0; i<atomObjects.Count; i++)
         {
-            obj.GetComponent<Atom>().CreateLinksToNeighbors(atomObjects, StickPrefab);
+            GameObject obj = atomObjects[i];
+            obj.GetComponent<Atom>().AllSiblings = atomObjects;
+            obj.GetComponent<Atom>().Molecule = this;
+            obj.GetComponent<Atom>().IndexInsideCell = i;
+            obj.GetComponent<Atom>().CalculateLinksToNeighbors();
         }
-
-
+        /*
         Vector3 offsetX = cell.CellToWorld(new Vector3(1, 0, 0));
         Vector3 offsetY = cell.CellToWorld(new Vector3(0, 1, 0));
         Vector3 offsetZ = cell.CellToWorld(new Vector3(0, 0, 1));
-
+        
         for(int i=0; i<2; i++)
         {
             for (int j=0; j<2; j++)
@@ -210,7 +216,7 @@ public class Molecule : MonoBehaviour
                 }
             }
         }
-
+        */
         //System.IO.TextWriter file = new System.IO.StreamWriter(@"C:\Users\MSI\Desktop\shelx\coords.txt");
         //foreach(GameObject g in GameObject.FindGameObjectsWithTag("Atom"))
         //{
