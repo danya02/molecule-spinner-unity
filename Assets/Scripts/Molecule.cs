@@ -137,11 +137,13 @@ public class Molecule : MonoBehaviour
     public GameObject AtomPrefab;
 
     public List<AtomDataElement> atoms = new List<AtomDataElement>();
-    public HashSet<Vector3> AllAliveAtomPositions = new HashSet<Vector3>();
+    public Dictionary<Vector3, GameObject> AllAliveAtoms = new Dictionary<Vector3, GameObject>();
     List<GameObject> atomObjects = new List<GameObject>();
 
     public CellData cell = new CellData();
     HashSet<Symmetry> symmetries = new HashSet<Symmetry>(new SymmetryEqualityComparer());
+
+    public Dictionary<int, HashSet<int>> AsymmetricUnitGroups = new Dictionary<int, HashSet<int>>();
 
     void InstantiateAtoms()
     {
@@ -153,21 +155,26 @@ public class Molecule : MonoBehaviour
             root.name = atom.name;
 
             List<Vector3> positions = new List<Vector3>();
-            Vector3 originalPosition = atom.position;
-            foreach(Symmetry symm in symmetries)
+            Vector3 originalPosition = Atom.RoundAtomPosition(atom.position);
+            int i = 0;
+            foreach (Symmetry symm in symmetries)
             {
-                positions.Add(symm.ApplyTransform(originalPosition));
+                Vector3 pos = symm.ApplyTransform(originalPosition);
+                pos = Atom.RoundAtomPosition(pos);
+                positions.Add(pos);
+                GameObject atomObj = Instantiate(AtomPrefab);
+                atomObj.GetComponent<Atom>().AllAliveAtoms = AllAliveAtoms;
+                atomObj.transform.parent = root.transform;
+                atomObj.GetComponent<Atom>().Become(atom, cell, pos);
+                atomObj.GetComponent<Atom>().UnitGroup = i;
+                if (!AsymmetricUnitGroups.ContainsKey(i)) { AsymmetricUnitGroups[i] = new HashSet<int>(); }
+                AllAliveAtoms.Add(Atom.RoundAtomPosition(atomObj.transform.position), atomObj);
+                atomObjects.Add(atomObj);
+
+                i += 1;
+
             }
 
-            foreach (Vector3 position in positions)
-            {
-                GameObject atomObj = Instantiate(AtomPrefab);
-                atomObj.GetComponent<Atom>().AllAtomPositions = AllAliveAtomPositions;
-                atomObj.transform.parent = root.transform;
-                atomObj.GetComponent<Atom>().Become(atom, cell, position);
-                AllAliveAtomPositions.Add(atomObj.transform.position);
-                atomObjects.Add(atomObj);
-            }
         }
 
         HashSet<Vector3> seenPositions = new HashSet<Vector3>();
@@ -177,7 +184,7 @@ public class Molecule : MonoBehaviour
         List<GameObject> toDelete = new List<GameObject>();
         foreach(GameObject obj in atomObjects)
         {
-            if (seenPositions.Contains(obj.transform.localPosition))
+            if (seenPositions.Contains(Atom.RoundAtomPosition(obj.transform.position)))
             {
                 Destroy(obj);
                 toDelete.Add(obj);
@@ -188,7 +195,11 @@ public class Molecule : MonoBehaviour
                 obj.transform.parent.parent = cellRoot.transform;
             }
         }
-        foreach(GameObject obj in toDelete) { atomObjects.Remove(obj); }
+        foreach(GameObject obj in toDelete) {
+            atomObjects.Remove(obj);
+        }
+
+
 
         for(int i=0; i<atomObjects.Count; i++)
         {
@@ -197,6 +208,8 @@ public class Molecule : MonoBehaviour
             obj.GetComponent<Atom>().Molecule = this;
             obj.GetComponent<Atom>().IndexInsideCell = i;
             obj.GetComponent<Atom>().CalculateLinksToNeighbors();
+            AsymmetricUnitGroups[obj.GetComponent<Atom>().UnitGroup].Add(i);
+
         }
         /*
         Vector3 offsetX = cell.CellToWorld(new Vector3(1, 0, 0));

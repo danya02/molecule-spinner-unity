@@ -30,13 +30,18 @@ public class Atom : MonoBehaviour
         return (float)Math.Round((double)original, AtomCollisionSignificantDigits);
     }
 
-    static Vector3 RoundAtomPosition(Vector3 original)
+    public static Vector3 RoundAtomPosition(Vector3 original)
     {
         return new Vector3(
             RoundNumber(original.x),
             RoundNumber(original.y),
             RoundNumber(original.z)
             );
+    }
+
+    public Vector3 normalizedPosition { get {
+            return RoundAtomPosition(transform.position);
+        }
     }
 
     // Start is called before the first frame update
@@ -48,10 +53,11 @@ public class Atom : MonoBehaviour
     public int IndexInsideCell;
     public AtomType myType;
     public List<GameObject> AllSiblings;
-    public HashSet<Vector3> AllAtomPositions;
+    public Dictionary<Vector3, GameObject> AllAliveAtoms;
     public HashSet<int> MySiblings = new HashSet<int>();
     Dictionary<int, Vector3> offsets = new Dictionary<int, Vector3>();
     public Molecule Molecule;
+    public int UnitGroup;
 
     public void Become(AtomDataElement dataElement, CellData cell, Vector3 position)
     {
@@ -148,65 +154,87 @@ public class Atom : MonoBehaviour
         }
     }
 
-    /*public void CreateLinksToNeighbors(List<GameObject> ao, GameObject stickPrefab)
-    {
-        List<Vector3> positions = new List<Vector3>();
-        positions.Add(transform.position);
-        List<GameObject> atomObjects = new List<GameObject>(ao);
-        //atomObjects.Sort(new DistanceComparer(this.gameObject));
-        foreach(GameObject g in atomObjects)
-        {
-            if(this.gameObject == g) { continue; }
-            Atom a = g.GetComponent<Atom>();
-            if (a.myType.covalentRadius + this.myType.covalentRadius >= Vector3.Distance(this.transform.position, a.transform.position))
-            {
-                GameObject stick = Instantiate(stickPrefab);
-                stick.transform.parent = this.transform;
-                
-                stick.transform.position = (a.transform.position + transform.position)/2;
-                stick.transform.rotation = Quaternion.LookRotation((a.transform.position - transform.position).normalized) * Quaternion.Euler(Vector3.right * 90f);
-                Vector3 sv = stick.transform.localScale;
-                sv.y = Vector3.Distance(this.transform.position, a.transform.position);
-                stick.transform.localScale = sv;
-                Debug.DrawLine(a.transform.localPosition, this.transform.localPosition, Color.blue);
-            }
-        }
-
-    }*/
-
     void BecomeCopyOf(Atom what)
     {
-        AllAtomPositions = what.AllAtomPositions;
+        AllAliveAtoms = what.AllAliveAtoms;
         AllSiblings = what.AllSiblings;
         offsets = what.offsets;
         MySiblings = what.MySiblings;
         gameObject.transform.parent = what.transform.parent;
         foreach(int ind in MySiblings)
         {
-            Debug.DrawRay(transform.position, AllSiblings[ind].transform.position, Color.red, 5);
+            Debug.DrawRay(transform.position, offsets[ind], Color.red, 5);
         }
     }
 
-    internal void GenerateSiblings()
+    internal List<GameObject> GenerateSiblings()
     {
+        List<GameObject> mySiblings = new List<GameObject>();
         foreach (int siblingInd in MySiblings)
         {
-            Debug.Log(siblingInd.ToString()+offsets.ContainsKey(siblingInd).ToString());
-            if(AllAtomPositions.Contains(RoundAtomPosition(offsets[siblingInd] + transform.position))) { Debug.Log("Sibling " + siblingInd.ToString() + " already exists, skipping"); continue; }
+            if(AllAliveAtoms.ContainsKey(RoundAtomPosition(offsets[siblingInd] + transform.position))) {
+                Debug.Log("Sibling " + siblingInd.ToString() + " already exists, skipping");
+                mySiblings.Add(AllAliveAtoms[RoundAtomPosition(offsets[siblingInd] + transform.position)]);
+                continue;
+            }
             GameObject sibling = Instantiate(AllSiblings[siblingInd]);
             sibling.transform.position = offsets[siblingInd] + transform.position;
             sibling.GetComponent<Atom>().BecomeCopyOf(AllSiblings[siblingInd].GetComponent<Atom>());
-            AllAtomPositions.Add(RoundAtomPosition(sibling.transform.position));
+            AllAliveAtoms.Add(RoundAtomPosition(sibling.transform.position), sibling);
             Debug.Log("Sibling " + siblingInd.ToString() + " instantiated");
             Debug.DrawLine(transform.position, sibling.transform.position, Color.red);
+            mySiblings.Add(sibling);
+        }
+        return mySiblings;
+    }
+
+    internal void GenerateAsymmetricUnitsInMySiblings()
+    {
+        List<GameObject> mySiblingInstances = GenerateSiblings();
+        HashSet<int> UnitIndexes = new HashSet<int>();
+        foreach (GameObject g in mySiblingInstances)
+        {
+            Atom a = g.GetComponent<Atom>();
+            UnitIndexes.Add(a.UnitGroup);
+        }
+
+        foreach(int ug in UnitIndexes)
+        {
+            foreach(GameObject s in mySiblingInstances)
+            {
+                s.GetComponent<Atom>().GenerateAsymmetricUnit(ug);
+            }
+        }
+
+
+    }
+
+    private void GenerateAsymmetricUnit(int ug)
+    {
+        if (UnitGroup != ug) { return; }
+        foreach (int siblingInd in MySiblings)
+        {
+            if (AllAliveAtoms.ContainsKey(RoundAtomPosition(offsets[siblingInd] + transform.position)))
+            {
+                continue;
+            }
+            if (AllSiblings[siblingInd].GetComponent<Atom>().UnitGroup != ug) { continue; }
+            GameObject sibling = Instantiate(AllSiblings[siblingInd]);
+            sibling.transform.position = offsets[siblingInd] + transform.position;
+            sibling.GetComponent<Atom>().BecomeCopyOf(AllSiblings[siblingInd].GetComponent<Atom>());
+            AllAliveAtoms.Add(RoundAtomPosition(sibling.transform.position), sibling);
+            Debug.Log("Sibling " + siblingInd.ToString() + " instantiated");
+            Debug.DrawLine(transform.position, sibling.transform.position, Color.red);
+            sibling.GetComponent<Atom>().GenerateAsymmetricUnit(ug);
+
         }
     }
 
-    public void OnDestroy()
+        public void OnDestroy()
     {
-        if (transform != null && AllAtomPositions != null)
+        if (transform != null && AllAliveAtoms != null)
         {
-            AllAtomPositions.Remove(transform.position);
+            AllAliveAtoms.Remove(transform.position);
         }
     }
 }
