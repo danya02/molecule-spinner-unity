@@ -13,11 +13,12 @@ public class AtomOnClickSpawner : MonoBehaviour
     {
         Debug.Log("Clicked: " + name);
         GetComponent<Atom>().GenerateAsymmetricUnitsInMySiblings();
+        //GetComponent<Atom>().GenerateCellUnitsInMySiblings();
     }
 
     public void OnMouseEnter()
     {
-        GetComponent<Atom>().GenerateAsymmetricUnitsInMySiblings();
+        //GetComponent<Atom>().GenerateAsymmetricUnitsInMySiblings();
 
 //        GetComponent<Atom>().GenerateSiblings();
     }

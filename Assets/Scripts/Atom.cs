@@ -20,6 +20,7 @@ class DistanceComparer : IComparer<GameObject>
     }
 }
 
+
 public class Atom : MonoBehaviour
 {
 
@@ -39,8 +40,11 @@ public class Atom : MonoBehaviour
             );
     }
 
-    public Vector3 normalizedPosition { get {
-            return RoundAtomPosition(transform.position);
+    public Vector3 canonicalPosition { get {
+            GameObject superParent = gameObject;
+            Vector3 answer = RoundAtomPosition(transform.position);
+            answer = transform.TransformPoint(answer);
+            return answer;
         }
     }
 
@@ -53,7 +57,7 @@ public class Atom : MonoBehaviour
     public int IndexInsideCell;
     public AtomType myType;
     public List<GameObject> AllSiblings;
-    public Dictionary<Vector3, GameObject> AllAliveAtoms;
+    public AtomDict AllAliveAtoms;
     public HashSet<int> MySiblings = new HashSet<int>();
     Dictionary<int, Vector3> offsets = new Dictionary<int, Vector3>();
     public Molecule Molecule;
@@ -76,8 +80,10 @@ public class Atom : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        
+        enabled = false;
     }
+
+    public GameObject stick;
 
     public void CalculateLinksToNeighbors()
     {
@@ -104,6 +110,10 @@ public class Atom : MonoBehaviour
             bool c(Vector3 offset) { return Vector3.Distance(transform.position, a.transform.position + offset) -0.5 <= a.myType.covalentRadius + myType.covalentRadius; }
             void ok(Vector3 offset) {
                 Debug.DrawLine(transform.position, a.transform.position+offset, Color.blue, 1000000, false);
+                var newStick = Instantiate(stick);
+                newStick.transform.position = (transform.position + a.transform.position + offset) / 2;
+                newStick.transform.rotation = Quaternion.LookRotation(a.transform.position + offset - transform.position, Vector3.right) * Quaternion.Euler(90, 0, 0);
+                newStick.transform.localScale = new Vector3(0.2f, (a.transform.position + offset - transform.position).magnitude, 0.2f);
                 a.MySiblings.Add(IndexInsideCell);
                 MySiblings.Add(i);
                 offsets[i] = a.transform.position - transform.position + offset;
@@ -163,7 +173,13 @@ public class Atom : MonoBehaviour
         gameObject.transform.parent = what.transform.parent;
         foreach(int ind in MySiblings)
         {
-            Debug.DrawRay(transform.position, offsets[ind], Color.red, 5);
+            Debug.DrawRay(transform.position, offsets[ind], Color.red, 500);
+            var newStick = Instantiate(stick);
+            newStick.transform.position = (transform.position + transform.position + offsets[ind]) / 2;
+            newStick.transform.rotation = Quaternion.LookRotation(offsets[ind], Vector3.right) * Quaternion.Euler(90, 0, 0);
+            newStick.transform.localScale = new Vector3(0.2f, (offsets[ind]).magnitude, 0.2f);
+
+
         }
     }
 
@@ -172,17 +188,18 @@ public class Atom : MonoBehaviour
         List<GameObject> mySiblings = new List<GameObject>();
         foreach (int siblingInd in MySiblings)
         {
-            if(AllAliveAtoms.ContainsKey(RoundAtomPosition(offsets[siblingInd] + transform.position))) {
+            if(AllAliveAtoms.ContainsKey(offsets[siblingInd] + transform.position)) {
                 Debug.Log("Sibling " + siblingInd.ToString() + " already exists, skipping");
-                mySiblings.Add(AllAliveAtoms[RoundAtomPosition(offsets[siblingInd] + transform.position)]);
+                mySiblings.Add(AllAliveAtoms[offsets[siblingInd] + transform.position]);
                 continue;
             }
             GameObject sibling = Instantiate(AllSiblings[siblingInd]);
             sibling.transform.position = offsets[siblingInd] + transform.position;
             sibling.GetComponent<Atom>().BecomeCopyOf(AllSiblings[siblingInd].GetComponent<Atom>());
-            AllAliveAtoms.Add(RoundAtomPosition(sibling.transform.position), sibling);
+            AllAliveAtoms.Add(sibling.GetComponent<Atom>().canonicalPosition, sibling);
             Debug.Log("Sibling " + siblingInd.ToString() + " instantiated");
             Debug.DrawLine(transform.position, sibling.transform.position, Color.red);
+            // sticks not needed here
             mySiblings.Add(sibling);
         }
         return mySiblings;
@@ -198,43 +215,70 @@ public class Atom : MonoBehaviour
             UnitIndexes.Add(a.UnitGroup);
         }
 
-        foreach(int ug in UnitIndexes)
+        foreach (int ug in UnitIndexes)
         {
-            foreach(GameObject s in mySiblingInstances)
+            foreach (GameObject s in mySiblingInstances)
             {
-                s.GetComponent<Atom>().GenerateAsymmetricUnit(ug);
+                s.GetComponent<Atom>().GenerateAsymmetricUnit(ug, 0);
             }
         }
 
-
     }
 
-    private void GenerateAsymmetricUnit(int ug)
+    internal void GenerateCellUnitsInMySiblings()
     {
+        List<GameObject> mySiblingInstances = GenerateSiblings();
+        foreach(GameObject go in mySiblingInstances)
+        {
+            go.GetComponent<Atom>().GenerateCellUnit();
+        }
+    }
+
+    private void GenerateAsymmetricUnit(int ug, int depth)
+    {
+        if(depth > 10) { return; }
         if (UnitGroup != ug) { return; }
         foreach (int siblingInd in MySiblings)
         {
-            if (AllAliveAtoms.ContainsKey(RoundAtomPosition(offsets[siblingInd] + transform.position)))
+            if (AllAliveAtoms.ContainsKey(offsets[siblingInd] + canonicalPosition))
             {
                 continue;
             }
             if (AllSiblings[siblingInd].GetComponent<Atom>().UnitGroup != ug) { continue; }
             GameObject sibling = Instantiate(AllSiblings[siblingInd]);
-            sibling.transform.position = offsets[siblingInd] + transform.position;
+            sibling.transform.position = offsets[siblingInd] + canonicalPosition;
             sibling.GetComponent<Atom>().BecomeCopyOf(AllSiblings[siblingInd].GetComponent<Atom>());
-            AllAliveAtoms.Add(RoundAtomPosition(sibling.transform.position), sibling);
-            Debug.Log("Sibling " + siblingInd.ToString() + " instantiated");
+            AllAliveAtoms.Add(sibling.GetComponent<Atom>().canonicalPosition, sibling);
             Debug.DrawLine(transform.position, sibling.transform.position, Color.red);
-            sibling.GetComponent<Atom>().GenerateAsymmetricUnit(ug);
+            // sticks not needed here
+            sibling.GetComponent<Atom>().GenerateAsymmetricUnit(ug, depth+1);
+        }
+    }
+
+    private void GenerateCellUnit()
+    {
+        Vector3 cell_offset = RoundAtomPosition(-AllSiblings[IndexInsideCell].transform.position + transform.position);
+
+        for (int i = 0; i < AllSiblings.Count; i++)
+        {
+            if(i == IndexInsideCell) { continue; }
+            if (AllAliveAtoms.ContainsKey(AllSiblings[i].transform.position - cell_offset)) { continue; }
+            GameObject sibling = Instantiate(AllSiblings[i]);
+            sibling.transform.parent = transform.parent;
+            sibling.transform.position += cell_offset;
+            sibling.transform.position = RoundAtomPosition(sibling.transform.position);
+            sibling.GetComponent<Atom>().BecomeCopyOf(AllSiblings[i].GetComponent<Atom>());
+            AllAliveAtoms.Add(sibling.GetComponent<Atom>().canonicalPosition, sibling);
+            //Debug.DrawLine(transform.position, sibling.transform.position, Color.red);
 
         }
     }
 
-        public void OnDestroy()
+    public void OnDestroy()
     {
         if (transform != null && AllAliveAtoms != null)
         {
-            AllAliveAtoms.Remove(transform.position);
+            AllAliveAtoms.Remove(canonicalPosition);
         }
     }
 }

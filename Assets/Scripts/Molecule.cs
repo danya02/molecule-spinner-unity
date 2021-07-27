@@ -137,7 +137,7 @@ public class Molecule : MonoBehaviour
     public GameObject AtomPrefab;
 
     public List<AtomDataElement> atoms = new List<AtomDataElement>();
-    public Dictionary<Vector3, GameObject> AllAliveAtoms = new Dictionary<Vector3, GameObject>();
+    public AtomDict AllAliveAtoms = new AtomDict();
     List<GameObject> atomObjects = new List<GameObject>();
 
     public CellData cell = new CellData();
@@ -145,8 +145,11 @@ public class Molecule : MonoBehaviour
 
     public Dictionary<int, HashSet<int>> AsymmetricUnitGroups = new Dictionary<int, HashSet<int>>();
 
+    public GameObject BillboardTimer;
+
     void InstantiateAtoms()
     {
+        Instantiate(BillboardTimer);
         GameObject empty = new GameObject();
         foreach(AtomDataElement atom in atoms)
         {
@@ -297,7 +300,7 @@ public class Molecule : MonoBehaviour
             {
                 line = reader.ReadLine();
                 line = line.Trim();
-                if(line == "") { continue; }
+                if (line == "") { continue; }
                 if (line.StartsWith("TITL"))
                 {
                     this.gameObject.name = line.Substring(4);
@@ -343,6 +346,20 @@ public class Molecule : MonoBehaviour
                         {
                             myMatrix = m
                         });
+                    }
+
+                    if (latticeType == 2 || latticeType == -2)
+                    {
+                        Matrix4x4 m = Matrix4x4.identity;
+                        m[0, 3] = 0.5f;
+                        m[1, 3] = 0.5f;
+                        m[2, 3] = 0.5f;
+                        m[3, 3] = 0;
+                        symmetries.Add(new Symmetry
+                        {
+                            myMatrix = m
+                        });
+
                     }
                 }
 
